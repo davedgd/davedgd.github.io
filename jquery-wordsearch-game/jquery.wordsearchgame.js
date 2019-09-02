@@ -131,14 +131,18 @@
             
             _create : function () {
                 //member variables
-                this.model      = GameWidgetHelper.prepGrid(this.options.gridsize, this.options.wordlist)
+                //note: do/while checks for repeating words and recreates as needed
+                do {
+                    this.model      = GameWidgetHelper.prepGrid(this.options.gridsize, this.options.wordlist);
+                } while (checkRepeatedWords(this.model) == "repeats");
+
                 this.startedAt  = new Root();
                 this.hotzone    = new Hotzone();
                 this.arms       = new Arms();
                 
                 onWordFound = this.options.onWordFound;
 				onWordSearchComplete = this.options.onWordSearchComplete;
-				maxWords = this.options.wordlist.split(",").length;
+                maxWords = this.options.wordlist.split(",").length;
                 
 				GameWidgetHelper.renderGame(this.element[0],this.model);
 				
@@ -202,18 +206,21 @@
                     
                     //if in hotzone
                     var chosenOne = this.hotzone.index(event.target);
+
+                    //console.log(chosenOne)
                     if (chosenOne!= -1) {
+
                         //set target to glowing; set rest of hotzone to armed
                         this.hotzone.setChosen(chosenOne);
                         
                         //calculate arms and set to armed
                         this.arms.deduceArm(this.startedAt.root, chosenOne);
-                        
-                        
-                    }else { //in arms
-                        //set glowing from target to root
-                        this.arms.glowTo(event.target)
+
                     }
+
+                    //important: needed to glow cell next to root (fixed rendering issues around root)
+                    this.arms.glowTo(event.target);
+                    
                 }
                 
             },
@@ -244,7 +251,8 @@
 
 				this.hotzone.returnToNormal();
 				this.startedAt.returnToNormal();
-				this.arms.returnToNormal();
+                this.arms.returnToNormal();
+                
 				//	}
             }
             
@@ -341,7 +349,7 @@ function Arms() {
 
 
         }
-        for (var x=1;x<this.arms.length;x++) {
+        for (var x=0;x<this.arms.length;x++) {
             Visualizer.arm(this.arms[x]);
         }
     }
@@ -349,7 +357,7 @@ function Arms() {
 	//lights up the cells that from the root cell to the current one
     this.glowTo = function (upto) {
         var to = $(this.arms).index(upto);
-        
+
         for (var x=0;x<this.arms.length;x++) { //light up through hot zone
             
             if (x<=to) {
@@ -357,7 +365,6 @@ function Arms() {
             }
             else {
                 Visualizer.arm(this.arms[x]);
-
             }
         }
     }
@@ -430,9 +437,10 @@ function Hotzone() {
 
     this.returnToNormal = function () {
 
-        for (var t=0;t<this.elems.length;t++) {
-            Visualizer.restore(this.elems[t]);
-        }
+        if (this.elems != null) // in case there is nothing to restore (e.g., fresh puzzle)
+            for (var t=0;t<this.elems.length;t++) {
+                Visualizer.restore(this.elems[t]);
+            }
     }
     
     this.clean = function() {
@@ -488,7 +496,6 @@ var Visualizer = {
     arm : function (c) {
         $(c)//.removeClass("rf-selected")
             .removeClass("rf-glowing")
-            .removeClass("rf-glowing-root")
             .addClass("rf-armed");
             
         if ( c!=null && $.data(c,"selected") == "true" ) {
@@ -500,60 +507,71 @@ var Visualizer = {
     restore : function (c) {
         $(c).removeClass("rf-armed")
             .removeClass("rf-glowing");
-            
-        if ( c!=null && $.data(c,"selected") == "true" ) {
+        
+        // added rf-highlight to avoid highlightHelp graphical issue
+        if ( c!=null && $.data(c,"selected") == "true" && !$(c).hasClass("rf-highlight")) {
             $(c).addClass("rf-selected");
         }
     },
     
     restoreRoot : function (c) {
+
         $(c).removeClass("rf-armed")
             .removeClass("rf-glowing-root");
-            
-        if ( c!=null && $.data(c,"selected") == "true" ) {
+        
+        // added rf-highlight to avoid highlightHelp graphical issue
+        if ( c!=null && $.data(c,"selected") == "true" && !$(c).hasClass("rf-highlight")) {
             $(c).addClass("rf-selected");
         }
     },
     
     select : function (c) {
-    	requestRunning = true
+    	requestRunning = true;
         $(c).removeClass("rf-armed")
             .removeClass("rf-glowing")
-			.animate({'opacity' : '20'}, 500, "linear", function () {
+			.animate({'opacity' : '20'}, 300, "linear", function () {
+
 				$(c).removeClass("rf-highlight").addClass("rf-selected")
-				.animate({'opacity' : 'show'}, 500, "linear", requestRunning = false)
+				.animate({'opacity' : 'show'}, 300, "linear", requestRunning = false)
 			})
     },
     
+    /*
     highlight : function (c) {
         $(c).removeClass("rf-armed")
             .removeClass("rf-selected")
 			.addClass("rf-highlight");
     },
+    */
     
     //this function fixes the highlighting issue for overlapped words by using manually set cellUsedLocations (array where cellUsedLocations[i][0] = row and cellUsedLocations[i][1] = col)
     highlightHelp : function (w) {
     
         for (i=0;i<w.size;i++) {
-        	$("#rf-tablegrid tr:eq("+(w.cellsUsedLocations[i][0])+") td:eq("+(w.cellsUsedLocations[i][1])+")").addClass("rf-highlight")
+            theCells = $("#rf-tablegrid tr:eq("+(w.cellsUsedLocations[i][0])+") td:eq("+(w.cellsUsedLocations[i][1])+")")
+            
+            theCells.removeClass("rf-armed")
+                    .removeClass("rf-selected")
+                    .removeClass("rf-glowing")
+                    .removeClass("rf-glowing-root")
+                    .addClass("rf-highlight")
         	}
     },
 	
     signalWordFound : function (w) {
+        requestRunning = true;
 
-		$(w).css("background",'yellow').animate({"opacity": 'hide'},1000,"linear",
+		$(w).css("background",'yellow').animate({"opacity": 'hide'},300,"linear",
 					 function () {
 						 $(w).css("background",'white')
-						 $(w).addClass('rf-foundword').animate({"opacity": 'show'},1000,"linear")
+						 $(w).addClass('rf-foundword').animate({"opacity": 'show'},300,"linear", requestRunning = false)
 					 });
     },
-
-	
-
 
 	clean : function (c) {
         $(c).removeClass("rf-armed")
             .removeClass("rf-glowing")
+            .removeClass("rf-glowing-root")
             .removeClass("rf-selected");
             
         $.removeData($(c),"selected");    
@@ -725,8 +743,11 @@ function HorizontalPopulator(row, col, word, grid) {
     this.writeWord = function () {
 
         var chars = word.chars;
-        word.row = this.row+1
-        word.col = this.col+1
+        var lrow = this.row;
+        var lcol = this.col;
+        word.row = this.row+1;
+        word.col = this.col+1;
+
         for (var i=0;i<word.size;i++) {
             var c = new Cell();
             c.value = chars[i];
@@ -848,11 +869,15 @@ function VerticalPopulator(row, col, word, grid) {
 
     
     //write word on grid at given location
+    //also remember which cells were used for displaying the word
     this.writeWord = function () {
 
         var chars = word.chars;
-        word.row = this.row+1
-        word.col = this.col+1
+        var lrow = this.row;
+        var lcol = this.col;
+        word.row = this.row+1;
+        word.col = this.col+1;
+
         for (var i=0;i<word.size;i++) {
             var c = new Cell();
             c.value = chars[i];
@@ -994,8 +1019,9 @@ function LeftDiagonalPopulator(row, col, word, grid) {
         var chars = word.chars;
         var lrow = this.row;
         var lcol = this.col;
-        word.row = this.row+1
-        word.col = this.col+1
+        word.row = this.row+1;
+        word.col = this.col+1;
+
         for (var i=0;i<word.size;i++) {
             var c = new Cell();
             c.value = chars[i];
@@ -1083,13 +1109,8 @@ function LeftDiagonalPopulator(row, col, word, grid) {
 //Create a RightDiagonal Populator Strategy 
 function RightDiagonalPopulator(row, col, word, grid) {
 
-    // reverse rightdiagonal placement for left-to-right reading
-    word.chars = word.value.split('').reverse();
-    word.value = word.value.split('').reverse().join('');
-    //console.log(word);
-
     this.grid = grid;
-    this.row =  row;
+    this.row = row;
     this.col = col;
     this.word = word;
     this.size = this.grid.size();
@@ -1148,11 +1169,16 @@ function RightDiagonalPopulator(row, col, word, grid) {
     //also remember which cells were used for displaying the word
     this.writeWord = function () {
 
+        // reverse rightdiagonal placement for left-to-right reading
+        word.chars = word.value.split('').reverse();
+        word.value = word.value.split('').reverse().join('');
+
         var chars = word.chars;
         var lrow = this.row;
         var lcol = this.col;
-        word.row = this.row+1
-        word.col = this.col+1
+        word.row = this.row+1;
+        word.col = this.col+1;
+        
         for (var i=0;i<word.size;i++) {
             var c = new Cell();
             c.value = chars[i];
@@ -1301,14 +1327,38 @@ function WordList() {
     
     this.loadWords = function (csvwords) {
 
-		//fix extra spaces bug
-		csvwordsList = csvwords.split(",")
+		//word list checks
+        csvwordsList = csvwords.split(",")
+
 		for (i = 0; i<csvwordsList.length; i++) {
+
+            //remove leading white space
             csvwordsList[i] = jQuery.trim(csvwordsList[i])
+
+            //check for spaces in words
             if (/\s/.test(csvwordsList[i])) {
-                alert('Words in the word list should not contain spaces! Aborting...')
-                throw new Error("Words in the word list should not contain spaces! Aborting...");
+                msg = 'Words in the word list should not contain spaces! Aborting...';
+                alert(msg);
+                throw new Error(msg);
             }
+
+            //check for non letter characters
+            for (j = 0; j<csvwordsList[i].length; j++) {
+                if (csvwordsList[i][j].toUpperCase() == csvwordsList[i][j].toLowerCase()) {
+                    msg = 'Words in the word list should not contain unusual characters (e.g., hyphens)! Aborting...';
+                    alert(msg);
+                    throw new Error(msg);
+                }
+            }
+
+        }
+
+        //check for duplicate words
+        csvwordsListDeduped = Array.from(new Set(csvwordsList));
+        if (csvwordsList.length != csvwordsListDeduped.length) {
+            msg = 'Duplicate words detected in the word list! Aborting...';
+            alert(msg);
+            throw new Error(msg);
         }
 		
         var $n = this.words;
@@ -1361,21 +1411,104 @@ var Util = {
 } 
 
 /*
-Overlapped word fix
+Overlapped word check
 */
 function checkOverlappedWords (model) {
 	for (i=0; i<model.wordList.words.length;i++) {
 		//console.log(model.wordList.words[i])
 		for (j=0; j<model.wordList.words[i].cellsUsed.length; j++) {
 			//console.log(model.wordList.words[i].cellsUsed[j].td)
-			if(!model.wordList.words[i].cellsUsed[j].td) {
-				console.log('Overlapped Word:' + model.wordList.words[i].value)
-				console.log(model.wordList.words[i])
-				}
+			if (!model.wordList.words[i].cellsUsed[j].td) {
+				console.log('Overlapped Word: ' + model.wordList.words[i].value)
+				//console.log(model.wordList.words[i])
 			}
 		}
-	}			
-			
+    }
+}
+
+/*
+Repeated word check
+*/
+function checkRepeatedWords (model) {
+
+    checkResult = "clear"
+
+    words = model.wordList.words
+    cells = model.grid.cells
+
+    for (j = 0; j<words.length; j++)
+        words[j].occurences = 0
+
+    theSequences = new Array();
+
+    //horizontal
+    for (i = 0; i<cells.length; i++) {
+        theRow = ''
+        for (j = 0; j<cells[0].length; j++)
+            theRow += cells[i][j].value
+        theSequences.push(theRow)
+    }
+
+    //left and right diagonals
+
+    // credit to: https://stackoverflow.com/questions/35917734/how-do-i-traverse-an-array-diagonally-in-javascript
+    function getAllDiagonal(array) {
+        function row(offset) {
+            var i = array.length, a = '';
+            while (i--) {
+                a += array[i][j + (offset ? offset - i : i)] || '';
+            }
+            return a;
+        }
+    
+        var result = [[], []], j;
+        for (j = 1 - array.length; j < array[0].length; j++) {
+            result[0].push(row(0));
+            result[1].push(row(array.length - 1));
+        }
+        return result;
+    }
+    
+    res = getAllDiagonal(theSequences)
+    leftDiag = res[0]
+    rightDiag = res[1]
+    //console.log(leftDiag)
+    //console.log(rightDiag)
+    theSequences.concat(leftDiag).concat(rightDiag)
+
+    //vertical
+    for (i = 0; i<cells.length; i++) {
+        theCol = ''
+        for (j = 0; j<cells[0].length; j++)
+            theCol += cells[j][i].value
+        theSequences.push(theCol)
+    }
+
+    for (i = 0; i < theSequences.length; i++)
+        for (j = 0; j<words.length; j++) {
+            theWord = words[j].value
+            theWordReverse = theWord.split('').reverse().join('');
+            theOccurences = (theSequences[i].split(theWord).length - 1) + (theSequences[i].split(theWordReverse).length - 1)
+            words[j].occurences += theOccurences
+            /*
+            if (words[j].occurences > 1 && theOccurences > 0) {
+                console.log(theWord)
+                console.log(theSequences[i])
+            }
+            */
+        }
+
+    for (j = 0; j<words.length; j++)
+        if (words[j].occurences > 1) {
+            console.log('Repeated Word: ' + words[j].value)
+            //console.log(words[j])
+            checkResult = "repeats"
+            console.log('Reseting due to repeat...')
+        }
+
+    return(checkResult)
+
+}
 
 
 //------------------------------------------------------------------------------
@@ -1403,7 +1536,6 @@ var GameWidgetHelper = {
     renderGame : function(container, model) {
         var grid = model.grid;
         var cells = grid.cells;
-        
         
         var puzzleGrid = "<div id='rf-searchgamecontainer'><table id='rf-tablegrid' cellspacing=0 cellpadding=0 class='rf-tablestyle'>";
         for (var i=0;i<grid.size();i++) {
